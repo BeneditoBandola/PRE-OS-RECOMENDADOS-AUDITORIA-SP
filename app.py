@@ -131,21 +131,25 @@ if loja_escolhida_str:
     codigo_loja_sel = int(loja_escolhida_str.split(" - ")[0])
     loja_obj = next((l for l in lista_lojas if l['codigo'] == codigo_loja_sel), None)
 
+match_c = None
+if loja_obj and df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns:
+    match_c = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
+
 if loja_obj:
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Loja:** {loja_obj['nome']}")
     st.sidebar.markdown(f"**CNPJ:** {loja_obj['cnpj']}")
-    st.sidebar.markdown(f"**Cidade/Bairro:** {loja_obj['cidade']} / {loja_obj['bairro']}")
     
-    # Buscar dados de coordenadas se houver
-    if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns:
-        match_c = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
-        if not match_c.empty:
-            lat = str(match_c.iloc[0].get('LATITUDE', '')).replace(',', '.')
-            lon = str(match_c.iloc[0].get('LONGITUDE', '')).replace(',', '.')
-            if lat and lon and lat != 'nan':
-                maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                st.sidebar.markdown(f"🗺️ [Abrir Loja no Google Maps]({maps_url})", unsafe_allow_html=True)
+    if match_c is not None and not match_c.empty:
+        rc = match_c.iloc[0]
+        st.sidebar.markdown(f"**Endereço:** {rc.get('ENDEREÇO', '')}, {rc.get('BAIRRO', '')} - {rc.get('CIDADE', '')}")
+        lat = str(rc.get('LATITUDE', '')).replace(',', '.')
+        lon = str(rc.get('LONGITUDE', '')).replace(',', '.')
+        if lat and lon and lat != 'nan':
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+            st.sidebar.markdown(f"🗺️ [Abrir Loja no Google Maps]({maps_url})", unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown(f"**Cidade/Bairro:** {loja_obj['cidade']} / {loja_obj['bairro']}")
 
 caminho_json = f"auditoria_loja_{loja_obj['codigo']}.json" if loja_obj else "auditoria_loja_padrao.json"
 
@@ -212,13 +216,20 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
     story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
     story.append(Spacer(1, 5))
     
-    # Informações cadastrais do cliente
-    endereco_completo = "Não informado"
+    # Informações cadastrais do cliente extraídas da planilha de coordenadas
+    endereco_completo = f"{loja['cidade']} - {loja['bairro']}"
     lat_lon_str = "Não disponível"
     maps_url = ""
+    
     if dados_coord is not None and not dados_coord.empty:
         row_c = dados_coord.iloc[0]
-        endereco_completo = f"{row_c.get('ENDEREÇO', '')}, {row_c.get('BAIRRO', '')} - {row_c.get('CIDADE', '')}/{row_c.get('UF', '')}"
+        end_planilha = str(row_c.get('ENDEREÇO', '')).strip()
+        bairro_planilha = str(row_c.get('BAIRRO', '')).strip()
+        cidade_planilha = str(row_c.get('CIDADE', '')).strip()
+        uf_planilha = str(row_c.get('UF', '')).strip()
+        if end_planilha and end_planilha != 'nan':
+            endereco_completo = f"{end_planilha}, {bairro_planilha} - {cidade_planilha}/{uf_planilha}"
+            
         lat = str(row_c.get('LATITUDE', '')).replace(',', '.')
         lon = str(row_c.get('LONGITUDE', '')).replace(',', '.')
         if lat and lon and lat != 'nan':
@@ -276,18 +287,15 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
 if st.session_state["modo_ativo"] == "cadastro":
     st.markdown(f"#### 📝 Cadastro de Preços e Quantidades - {loja_obj['nome'] if loja_obj else ''}")
     
-    # Exibir detalhes e link do Google Maps na tela para o usuário
-    if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns and loja_obj:
-        match_c = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
-        if not match_c.empty:
-            rc = match_c.iloc0 if hasattr(match_c, 'iloc0') else match_c.iloc[0]
-            end_t = f"{rc.get('ENDEREÇO', '')}, {rc.get('BAIRRO', '')} - {rc.get('CIDADE', '')}/{rc.get('UF', '')}"
-            lat_t = str(rc.get('LATITUDE', '')).replace(',', '.')
-            lon_t = str(rc.get('LONGITUDE', '')).replace(',', '.')
-            st.info(f"📍 **Endereço cadastrado:** {end_t} | Coordenadas: ({lat_t}, {lon_t})")
-            if lat_t and lon_t and lat_t != 'nan':
-                url_m = f"https://www.google.com/maps/search/?api=1&query={lat_t},{lon_t}"
-                st.markdown(f"🌍 **[Abrir rota exata no Google Maps]({url_m})**", unsafe_allow_html=True)
+    if match_c is not None and not match_c.empty:
+        rc = match_c.iloc[0]
+        end_t = f"{rc.get('ENDEREÇO', '')}, {rc.get('BAIRRO', '')} - {rc.get('CIDADE', '')}/{rc.get('UF', '')}"
+        lat_t = str(rc.get('LATITUDE', '')).replace(',', '.')
+        lon_t = str(rc.get('LONGITUDE', '')).replace(',', '.')
+        st.info(f"📍 **Endereço na planilha:** {end_t} | Coordenadas: ({lat_t}, {lon_t})")
+        if lat_t and lon_t and lat_t != 'nan':
+            url_m = f"https://www.google.com/maps/search/?api=1&query={lat_t},{lon_t}"
+            st.markdown(f"🌍 **[Abrir rota exata no Google Maps]({url_m})**", unsafe_allow_html=True)
 
     st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente.")
 
@@ -353,11 +361,7 @@ if st.session_state["modo_ativo"] == "cadastro":
             df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'] = df_ressarcimento['DIFERENÇA_UNITARIA'] * df_ressarcimento['QUANTIDADE']
             total_geral = df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'].sum()
 
-            match_c_pdf = None
-            if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns and loja_obj:
-                match_c_pdf = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
-
-            arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral, match_c_pdf)
+            arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral, match_c)
             with open(arquivo_pdf, "rb") as pdf_file:
                 st.download_button(
                     label="⬇️ BAIXAR PDF DO RESSARCIMENTO COM MAPAS AGORA",
