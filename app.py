@@ -4,6 +4,12 @@ unicodedata = __import__('unicodedata')
 pandas = __import__('pandas')
 streamlit = st = __import__('streamlit')
 
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="Auditoria e Ressarcimento - São Paulo",
@@ -60,7 +66,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="cabecalho-principal"><h2 style="color: #0F172A; margin:0;">📊 Sistema de Auditoria e Ressarcimento (Estado de SP)</h2><p style="color: #64748B; font-size: 13px; margin:5px 0 0 0;">Busca rápida por EAN/Código, controle de preços e salvamento automático em JSON.</p></div>',
+    '<div class="cabecalho-principal"><h2 style="color: #0F172A; margin:0;">📊 Sistema de Auditoria e Ressarcimento (Estado de SP)</h2><p style="color: #64748B; font-size: 13px; margin:5px 0 0 0;">Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação em PDF.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -285,5 +291,73 @@ else:
             hide_index=True,
             use_container_width=True
         )
+
+        # --- BOTÃO PARA GERAR E BAIXAR PDF ---
+        st.markdown("---")
+        st.markdown("### 📄 Exportar Relatório Oficial")
+
+        def gerar_pdf_ressarcimento(loja, df_dados, total):
+            pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
+            doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+            styles = getSampleStyleSheet()
+            
+            title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor("#C0392B"), alignment=TA_CENTER)
+            sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.HexColor("#2C3E50"), alignment=TA_CENTER)
+            cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor("#2C3E50"))
+            cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=TA_CENTER)
+
+            story = []
+            story.append(Paragraph("<b>RELATÓRIO DE AUDITORIA E RESSARCIMENTO - SP</b>", title_style))
+            story.append(Spacer(1, 5))
+            story.append(Paragraph(f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']} | <b>Cidade:</b> {loja['cidade']}", sub_style))
+            story.append(Spacer(1, 15))
+
+            tabela_dados = [[
+                Paragraph("<b>Cód</b>", cell_header),
+                Paragraph("<b>Produto</b>", cell_header),
+                Paragraph("<b>Rec. SP</b>", cell_header),
+                Paragraph("<b>Praticado</b>", cell_header),
+                Paragraph("<b>Qtd</b>", cell_header),
+                Paragraph("<b>Dif. Unit.</b>", cell_header),
+                Paragraph("<b>Total Apurado</b>", cell_header)
+            ]]
+
+            for _, row in df_dados.iterrows():
+                tabela_dados.append([
+                    Paragraph(str(row['CODIGO_LIMPO']), cell_style),
+                    Paragraph(str(row['NOME COMERCIAL']), cell_style),
+                    Paragraph(f"R$ {row['VALOR_RECOMENDADO_SP']:.2f}", cell_style),
+                    Paragraph(f"R$ {row['PREÇO PRATICADO']:.2f}", cell_style),
+                    Paragraph(str(int(row['QUANTIDADE'])), cell_style),
+                    Paragraph(f"R$ {row['DIFERENÇA_UNITARIA']:.2f}", cell_style),
+                    Paragraph(f"R$ {row['VALOR_TOTAL_RESSARCIMENTO']:.2f}", cell_style)
+                ])
+
+            tabela = Table(tabela_dados, colWidths=[45, 160, 60, 60, 35, 60, 85])
+            tabela.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#C0392B")),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#BDC3C7")),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]))
+
+            story.append(tabela)
+            story.append(Spacer(1, 15))
+            story.append(Paragraph(f"<b>VALOR TOTAL GERAL DE RESSARCIMENTO: R$ {total:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", "."), ParagraphStyle('TotalStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor("#27AE60"), alignment=TA_CENTER)))
+
+            doc.build(story)
+            return pdf_path
+
+        if st.button("📥 Gerar Arquivo PDF para Download"):
+            arquivo_pdf = gerador_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral)
+            with open(arquivo_pdf, "rb") as pdf_file:
+                st.download_button(
+                    label="⬇️ Clique aqui para baixar o PDF gerado",
+                    data=pdf_file,
+                    file_name=arquivo_pdf,
+                    mime="application/pdf"
+                )
 
 st.markdown("<br><hr><p style='text-align: center; color: #555555; font-size: 11px;'>Desenvolvido por Benedito Bandola</p>", unsafe_allow_html=True)
