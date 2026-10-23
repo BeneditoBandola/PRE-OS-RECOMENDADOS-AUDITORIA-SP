@@ -68,7 +68,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços</h2><p>Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação automática em PDF.</p></div>',
+    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços & Coordenadas</h2><p>Busca rápida, controle de preços, salvamento em JSON, PDF completo e integração com Google Maps.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -84,20 +84,34 @@ def carregar_dados():
         try:
             df = pandas.read_excel(arquivo_base)
         except Exception as e:
-            st.error(f"Erro ao abrir a planilha: {e}")
+            st.error(f"Erro ao abrir a planilha de produtos: {e}")
             return None
 
     df.columns = [str(c).strip().upper() for c in df.columns]
-    
     for col in ["CODIGO", "COD. EAN", "SKU"]:
         if col in df.columns:
             df[f"{col}_LIMPO"] = df[col].astype(str).str.replace(".0", "", regex=False).str.strip()
         else:
             df[f"{col}_LIMPO"] = ""
-            
     return df
 
+@st.cache_data
+def carregar_coordenadas():
+    arq_coord = "clientes com coordenadas_Consolidada_20261005_134812.xlsx"
+    if not os.path.exists(arq_coord):
+        return None
+    try:
+        xls = pandas.ExcelFile(arq_coord)
+        df_c = pandas.read_excel(xls, sheet_name=xls.sheet_names[0])
+        df_c.columns = [str(c).strip().upper() for c in df_c.columns]
+        if 'CÓDIGO' in df_c.columns:
+            df_c['CODIGO_LIMPO'] = df_c['CÓDIGO'].astype(str).str.replace(".0", "", regex=False).str.strip()
+        return df_c
+    except Exception as e:
+        return None
+
 df_produtos = carregar_dados()
+df_coords = carregar_coordenadas()
 
 if df_produtos is None:
     st.error("⚠️ O arquivo `boneco_com_valor_h.xlsx` não foi encontrado na raiz do projeto.")
@@ -122,6 +136,16 @@ if loja_obj:
     st.sidebar.markdown(f"**Loja:** {loja_obj['nome']}")
     st.sidebar.markdown(f"**CNPJ:** {loja_obj['cnpj']}")
     st.sidebar.markdown(f"**Cidade/Bairro:** {loja_obj['cidade']} / {loja_obj['bairro']}")
+    
+    # Buscar dados de coordenadas se houver
+    if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns:
+        match_c = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
+        if not match_c.empty:
+            lat = str(match_c.iloc[0].get('LATITUDE', '')).replace(',', '.')
+            lon = str(match_c.iloc[0].get('LONGITUDE', '')).replace(',', '.')
+            if lat and lon and lat != 'nan':
+                maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                st.sidebar.markdown(f"🗺️ [Abrir Loja no Google Maps]({maps_url})", unsafe_allow_html=True)
 
 caminho_json = f"auditoria_loja_{loja_obj['codigo']}.json" if loja_obj else "auditoria_loja_padrao.json"
 
@@ -153,7 +177,7 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
 
 df_loja_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
 
-# --- 6. ESCOLHA DO MODO DE OPERAÇÃO (BOTÕES GRANDES) ---
+# --- 6. ESCOLHA DO MODO DE OPERAÇÃO ---
 st.markdown("### 🛠️ Escolha a Opção Desejada")
 
 col_b1, col_b2 = st.columns(2)
@@ -173,22 +197,42 @@ if btn_opcao_2:
 
 st.markdown("---")
 
-# Função de geração de PDF
-def gerar_pdf_ressarcimento(loja, df_dados, total):
+# Função de geração de PDF com Dados do Cliente e Google Maps
+def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
     pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
     doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor("#C0392B"), alignment=TA_CENTER)
-    sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.HexColor("#2C3E50"), alignment=TA_CENTER)
-    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor("#2C3E50"))
-    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=TA_CENTER)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=colors.HexColor("#C0392B"), alignment=TA_CENTER)
+    sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, textColor=colors.HexColor("#2C3E50"), alignment=TA_CENTER)
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8, textColor=colors.HexColor("#2C3E50"))
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, textColor=colors.white, alignment=TA_CENTER)
 
     story = []
     story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
     story.append(Spacer(1, 5))
-    story.append(Paragraph(f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']} | <b>Cidade:</b> {loja['cidade']}", sub_style))
-    story.append(Spacer(1, 15))
+    
+    # Informações cadastrais do cliente
+    endereco_completo = "Não informado"
+    lat_lon_str = "Não disponível"
+    maps_url = ""
+    if dados_coord is not None and not dados_coord.empty:
+        row_c = dados_coord.iloc[0]
+        endereco_completo = f"{row_c.get('ENDEREÇO', '')}, {row_c.get('BAIRRO', '')} - {row_c.get('CIDADE', '')}/{row_c.get('UF', '')}"
+        lat = str(row_c.get('LATITUDE', '')).replace(',', '.')
+        lon = str(row_c.get('LONGITUDE', '')).replace(',', '.')
+        if lat and lon and lat != 'nan':
+            lat_lon_str = f"Lat: {lat} | Lon: {lon}"
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+
+    info_loja_txt = f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']}<br/><b>Endereço:</b> {endereco_completo}<br/><b>Coordenadas:</b> {lat_lon_str}"
+    story.append(Paragraph(info_loja_txt, sub_style))
+    
+    if maps_url:
+        story.append(Spacer(1, 3))
+        story.append(Paragraph(f'<font color="#1A0dab"><u><a href="{maps_url}">🗺️ Clique aqui para abrir a localização exata no Google Maps</a></u></font>', sub_style))
+        
+    story.append(Spacer(1, 12))
 
     tabela_dados = [[
         Paragraph("<b>Cód</b>", cell_header),
@@ -211,26 +255,40 @@ def gerar_pdf_ressarcimento(loja, df_dados, total):
             Paragraph(f"R$ {row['VALOR_TOTAL_RESSARCIMENTO']:.2f}", cell_style)
         ])
 
-    tabela = Table(tabela_dados, colWidths=[45, 160, 60, 60, 35, 60, 85])
+    tabela = Table(tabela_dados, colWidths=[45, 155, 60, 60, 35, 60, 90])
     tabela.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#C0392B")),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#BDC3C7")),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
 
     story.append(tabela)
-    story.append(Spacer(1, 15))
-    story.append(Paragraph(f"<b>VALOR TOTAL GERAL DE RESSARCIMENTO: R$ {total:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", "."), ParagraphStyle('TotalStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor("#27AE60"), alignment=TA_CENTER)))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"<b>VALOR TOTAL GERAL DE RESSARCIMENTO: R$ {total:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", "."), ParagraphStyle('TotalStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, textColor=colors.HexColor("#27AE60"), alignment=TA_CENTER)))
 
     doc.build(story)
     return pdf_path
 
-# --- OPÇÃO 1: CADASTRAR PREÇOS, QUANTIDADES E SALVAR (COM PDF AUTOMÁTICO) ---
+# --- OPÇÃO 1: CADASTRAR PREÇOS, QUANTIDADES E SALVAR ---
 if st.session_state["modo_ativo"] == "cadastro":
     st.markdown(f"#### 📝 Cadastro de Preços e Quantidades - {loja_obj['nome'] if loja_obj else ''}")
+    
+    # Exibir detalhes e link do Google Maps na tela para o usuário
+    if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns and loja_obj:
+        match_c = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
+        if not match_c.empty:
+            rc = match_c.iloc0 if hasattr(match_c, 'iloc0') else match_c.iloc[0]
+            end_t = f"{rc.get('ENDEREÇO', '')}, {rc.get('BAIRRO', '')} - {rc.get('CIDADE', '')}/{rc.get('UF', '')}"
+            lat_t = str(rc.get('LATITUDE', '')).replace(',', '.')
+            lon_t = str(rc.get('LONGITUDE', '')).replace(',', '.')
+            st.info(f"📍 **Endereço cadastrado:** {end_t} | Coordenadas: ({lat_t}, {lon_t})")
+            if lat_t and lon_t and lat_t != 'nan':
+                url_m = f"https://www.google.com/maps/search/?api=1&query={lat_t},{lon_t}"
+                st.markdown(f"🌍 **[Abrir rota exata no Google Maps]({url_m})**", unsafe_allow_html=True)
+
     st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente.")
 
     filtro_busca = st.text_input("🔍 Pesquisa rápida (EAN, Código ou Nome):", placeholder="Ex: 4731, gastro, kitten...")
@@ -238,7 +296,6 @@ if st.session_state["modo_ativo"] == "cadastro":
     df_filtrado = df_loja_atual.copy()
     if filtro_busca:
         termo = filtro_busca.strip().lower()
-        
         condicoes = []
         if 'COD. EAN_LIMPO' in df_filtrado.columns:
             condicoes.append(df_filtrado['COD. EAN_LIMPO'].str.endswith(termo) | df_filtrado['COD. EAN_LIMPO'].str.contains(termo, na=False))
@@ -283,13 +340,11 @@ if st.session_state["modo_ativo"] == "cadastro":
             if row['PREÇO PRATICADO'] > 0:
                 st.session_state["auditoria_dados"][chave_sessao_loja].loc[mask, 'STATUS_AUDITORIA'] = "Auditado"
         
-        # Salva no arquivo JSON
         df_para_salvar = st.session_state["auditoria_dados"][chave_sessao_loja]
         df_para_salvar.to_json(caminho_json, orient="records", force_ascii=False, indent=4)
         
         st.success(f"✅ Dados salvos com sucesso e gravados no arquivo `{caminho_json}`!")
 
-        # Prepara e disponibiliza o PDF para download direto na tela
         df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
         df_ressarcimento = df_atual[(df_atual['PREÇO PRATICADO'] > 0) & (df_atual['QUANTIDADE'] > 0)].copy()
 
@@ -298,10 +353,14 @@ if st.session_state["modo_ativo"] == "cadastro":
             df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'] = df_ressarcimento['DIFERENÇA_UNITARIA'] * df_ressarcimento['QUANTIDADE']
             total_geral = df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'].sum()
 
-            arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral)
+            match_c_pdf = None
+            if df_coords is not None and 'CODIGO_LIMPO' in df_coords.columns and loja_obj:
+                match_c_pdf = df_coords[df_coords['CODIGO_LIMPO'] == str(loja_obj['codigo'])]
+
+            arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral, match_c_pdf)
             with open(arquivo_pdf, "rb") as pdf_file:
                 st.download_button(
-                    label="⬇️ BAIXAR PDF DO RESSARCIMENTO AGORA",
+                    label="⬇️ BAIXAR PDF DO RESSARCIMENTO COM MAPAS AGORA",
                     data=pdf_file,
                     file_name=arquivo_pdf,
                     mime="application/pdf",
