@@ -46,7 +46,7 @@ LOJAS_POR_FILIAL = {
     ]
 }
 
-# --- 3. ESTILO VISUAL E TEMA (CORRIGIDO PARA FORÇAR TEXTO ESCURO NO RÁDIO) ---
+# --- 3. ESTILO VISUAL E TEMA ---
 st.markdown(
     """
 <style>
@@ -60,19 +60,8 @@ st.markdown(
     text-align: center;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
-.cabecalho-principal h2 {
-    color: #0F172A !important;
-}
-.cabecalho-principal p {
-    color: #475569 !important;
-}
-/* Força cor escura em todos os textos de opções de rádio para evitar sumir */
-div[data-baseweb="radio"] div {
-    color: #1E293B !important;
-}
-label[data-baseweb="radio"] span {
-    color: #1E293B !important;
-}
+.cabecalho-principal h2 { color: #0F172A !important; }
+.cabecalho-principal p { color: #475569 !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -164,26 +153,33 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
 
 df_loja_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
 
-# --- 6. ESCOLHA DO MODO DE OPERAÇÃO ---
-st.markdown("### 🛠️ Modo de Operação")
-modo_operacao = st.radio(
-    "Escolha o modo desejado:",
-    [
-        "1. Cadastrar / Atualizar Preços e Quantidades (Busca por EAN)",
-        "2. Relatório de Distorção de Preços (Apenas Preços)",
-        "3. Relatório de Cálculo de Ressarcimento (Com Quantidades)"
-    ],
-    horizontal=True
-)
+# --- 6. ESCOLHA DO MODO DE OPERAÇÃO (BOTÕES GRANDES E CLAROS) ---
+st.markdown("### 🛠️ Escolha a Opção Desejada")
+
+col_b1, col_b2 = st.columns(2)
+
+with col_b1:
+    btn_opcao_1 = st.button("📝 1. Cadastrar Preços, Quantidades & Gerar PDF", use_container_width=True, type="primary")
+with col_b2:
+    btn_opcao_2 = st.button("🔍 2. Listar Somente Preços Diferentes (Distorção)", use_container_width=True)
+
+# Gerenciar estado da aba selecionada
+if "modo_ativo" not in st.session_state:
+    st.session_state["modo_ativo"] = "cadastro"
+
+if btn_opcao_1:
+    st.session_state["modo_ativo"] = "cadastro"
+if btn_opcao_2:
+    st.session_state["modo_ativo"] = "relatorio"
 
 st.markdown("---")
 
-# --- MODO 1: CADASTRO COM BUSCA RÁPIDA POR EAN / CÓDIGO ---
-if modo_operacao.startswith("1"):
-    st.markdown(f"#### 📝 Cadastro Rápido - {loja_obj['nome'] if loja_obj else ''}")
-    st.markdown("💡 **Dica de Campo:** Digite os **últimos números do EAN**, código ou SKU para localizar o produto instantaneamente.")
+# --- OPÇÃO 1: CADASTRAR PREÇOS, QUANTIDADES E GERAR PDF ---
+if st.session_state["modo_ativo"] == "cadastro":
+    st.markdown(f"#### 📝 Cadastro de Preços e Quantidades - {loja_obj['nome'] if loja_obj else ''}")
+    st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente.")
 
-    filtro_busca = st.text_input("🔍 Pesquisa rápida (Digite parte do EAN, Código ou Nome):", placeholder="Ex: 4731, gastro, kitten...")
+    filtro_busca = st.text_input("🔍 Pesquisa rápida (EAN, Código ou Nome):", placeholder="Ex: 4731, gastro, kitten...")
     
     df_filtrado = df_loja_atual.copy()
     if filtro_busca:
@@ -224,7 +220,7 @@ if modo_operacao.startswith("1"):
         key=f"editor_{chave_sessao_loja}"
     )
 
-    if st.button("💾 Salvar e Gravar em JSON", type="primary"):
+    if st.button("💾 Salvar Alterações & Gravar em JSON", type="primary"):
         for idx, row in editado_df.iterrows():
             codigo_prod = row['CODIGO_LIMPO']
             mask = st.session_state["auditoria_dados"][chave_sessao_loja]['CODIGO_LIMPO'] == codigo_prod
@@ -238,76 +234,18 @@ if modo_operacao.startswith("1"):
         
         st.success(f"✅ Dados salvos com sucesso e gravados no arquivo `{caminho_json}`!")
 
-# --- MODO 2: RELATÓRIO DE DISTORÇÃO DE PREÇOS ---
-elif modo_operacao.startswith("2"):
-    st.markdown(f"#### 🔍 Relatório de Distorção de Preços (Apenas Preços)")
-    df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
-    df_auditado = df_atual[df_atual['PREÇO PRATICADO'] > 0].copy()
-
-    if df_auditado.empty:
-        st.warning("⚠️ Nenhum produto foi auditado com preço praticado ainda.")
-    else:
-        df_auditado['DIFERENÇA_UNITARIA'] = df_auditado['PREÇO PRATICADO'] - df_auditado['VALOR_RECOMENDADO_SP']
-        df_auditado['TIPO_DISTORCAO'] = df_auditado['DIFERENÇA_UNITARIA'].apply(lambda x: "Acima do Recomendado" if x > 0 else ("Abaixo do Recomendado" if x < 0 else "Preço Exato"))
-
-        m1, m2 = st.columns(2)
-        m1.metric("SKUs Auditados", len(df_auditado))
-        m2.metric("SKUs com Diferença", len(df_auditado[df_auditado['DIFERENÇA_UNITARIA'] != 0]))
-
-        st.markdown("---")
-        colunas_rel = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO'] if c in df_auditado.columns]
-        st.dataframe(
-            df_auditado[colunas_rel],
-            column_config={
-                "CODIGO_LIMPO": "Código",
-                "COD. EAN_LIMPO": "EAN",
-                "NOME COMERCIAL": "Produto",
-                "FAMILIA": "Família",
-                "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Rec. SP", format="R$ %.2f"),
-                "PREÇO PRATICADO": st.column_config.NumberColumn("Praticado", format="R$ %.2f"),
-                "DIFERENÇA_UNITARIA": st.column_config.NumberColumn("Diferença Unit.", format="R$ %.2f"),
-                "TIPO_DISTORCAO": "Status Distorção"
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-
-# --- MODO 3: RELATÓRIO DE CÁLCULO DE RESSARCIMENTO ---
-else:
-    st.markdown(f"#### 💰 Relatório de Cálculo de Ressarcimento (Com Quantidades)")
+    # Seção de cálculo e PDF logo abaixo no cadastro
     df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
     df_ressarcimento = df_atual[(df_atual['PREÇO PRATICADO'] > 0) & (df_atual['QUANTIDADE'] > 0)].copy()
 
-    if df_ressarcimento.empty:
-        st.warning("⚠️ Preencha os preços e as quantidades no Modo 1 para gerar o ressarcimento.")
-    else:
+    if not df_ressarcimento.empty:
         df_ressarcimento['DIFERENÇA_UNITARIA'] = df_ressarcimento['PREÇO PRATICADO'] - df_ressarcimento['VALOR_RECOMENDADO_SP']
         df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'] = df_ressarcimento['DIFERENÇA_UNITARIA'] * df_ressarcimento['QUANTIDADE']
-
         total_geral = df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'].sum()
-        st.metric("💵 Valor Total Geral de Ressarcimento", f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        st.markdown("---")
-        colunas_res = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE', 'DIFERENÇA_UNITARIA', 'VALOR_TOTAL_RESSARCIMENTO'] if c in df_ressarcimento.columns]
-        st.dataframe(
-            df_ressarcimento[colunas_res],
-            column_config={
-                "CODIGO_LIMPO": "Código",
-                "COD. EAN_LIMPO": "EAN",
-                "NOME COMERCIAL": "Produto",
-                "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Rec. SP", format="R$ %.2f"),
-                "PREÇO PRATICADO": st.column_config.NumberColumn("Praticado", format="R$ %.2f"),
-                "QUANTIDADE": "Qtd",
-                "DIFERENÇA_UNITARIA": st.column_config.NumberColumn("Dif. Unit.", format="R$ %.2f"),
-                "VALOR_TOTAL_RESSARCIMENTO": st.column_config.NumberColumn("Total Apurado", format="R$ %.2f")
-            },
-            hide_index=True,
-            use_container_width=True
-        )
 
-        # --- BOTÃO PARA GERAR E BAIXAR PDF ---
         st.markdown("---")
-        st.markdown("### 📄 Exportar Relatório Oficial")
+        st.markdown("### 💰 Apuração e Geração de PDF")
+        st.metric("Valor Total Geral de Ressarcimento", f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
         def gerar_pdf_ressarcimento(loja, df_dados, total):
             pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
@@ -363,7 +301,7 @@ else:
             doc.build(story)
             return pdf_path
 
-        if st.button("📥 Gerar Arquivo PDF para Download"):
+        if st.button("📥 Gerar Arquivo PDF Oficial"):
             arquivo_pdf = gerador_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral)
             with open(arquivo_pdf, "rb") as pdf_file:
                 st.download_button(
@@ -372,5 +310,43 @@ else:
                     file_name=arquivo_pdf,
                     mime="application/pdf"
                 )
+
+# --- OPÇÃO 2: LISTAR SOMENTE PREÇOS DIFERENTES (DISTORÇÃO) ---
+else:
+    st.markdown(f"#### 🔍 Listagem de Preços Diferentes (Distorção) - {loja_obj['nome'] if loja_obj else ''}")
+    df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
+    df_auditado = df_atual[df_atual['PREÇO PRATICADO'] > 0].copy()
+
+    if df_auditado.empty:
+        st.warning("⚠️ Nenhum produto foi cadastrado com preço praticado ainda.")
+    else:
+        df_auditado['DIFERENÇA_UNITARIA'] = df_auditado['PREÇO PRATICADO'] - df_auditado['VALOR_RECOMENDADO_SP']
+        # Filtra apenas os que possuem diferença (preços diferentes)
+        df_diferentes = df_auditado[df_auditado['DIFERENÇA_UNITARIA'] != 0].copy()
+
+        if df_diferentes.empty:
+            st.success("🎉 Todos os produtos auditados estão com o preço exato recomendado!")
+        else:
+            df_diferentes['TIPO_DISTORCAO'] = df_diferentes['DIFERENÇA_UNITARIA'].apply(lambda x: "Acima do Recomendado" if x > 0 else "Abaixo do Recomendado")
+
+            st.metric("SKUs com Preços Diferentes", len(df_diferentes))
+            st.markdown("---")
+            
+            colunas_rel = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO'] if c in df_diferentes.columns]
+            st.dataframe(
+                df_diferentes[colunas_rel],
+                column_config={
+                    "CODIGO_LIMPO": "Código",
+                    "COD. EAN_LIMPO": "EAN",
+                    "NOME COMERCIAL": "Produto",
+                    "FAMILIA": "Família",
+                    "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Rec. SP", format="R$ %.2f"),
+                    "PREÇO PRATICADO": st.column_config.NumberColumn("Praticado", format="R$ %.2f"),
+                    "DIFERENÇA_UNITARIA": st.column_config.NumberColumn("Diferença Unit.", format="R$ %.2f"),
+                    "TIPO_DISTORCAO": "Status Distorção"
+                },
+                hide_index=True,
+                use_container_width=True
+            )
 
 st.markdown("<br><hr><p style='text-align: center; color: #555555; font-size: 11px;'>Desenvolvido por Benedito Bandola</p>", unsafe_allow_html=True)
