@@ -12,7 +12,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Auditoria e Ressarcimento - São Paulo",
+    page_title="Ajuste de Preços - São Paulo",
     layout="wide",
     page_icon="📊",
 )
@@ -46,7 +46,7 @@ LOJAS_POR_FILIAL = {
     ]
 }
 
-# --- 3. ESTILO VISUAL E TEMA ---
+# --- 3. ESTILO VISUAL E TEMA (CORRIGIDO PARA EVITAR TEXTO BRANCO SOBRE BRANCO) ---
 st.markdown(
     """
 <style>
@@ -60,13 +60,19 @@ st.markdown(
     text-align: center;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
+.cabecalho-principal h2 {
+    color: #0F172A !important;
+}
+.cabecalho-principal p {
+    color: #475569 !important;
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 st.markdown(
-    '<div class="cabecalho-principal"><h2 style="color: #0F172A; margin:0;">📊 Sistema de Auditoria e Ressarcimento (Estado de SP)</h2><p style="color: #64748B; font-size: 13px; margin:5px 0 0 0;">Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação em PDF.</p></div>',
+    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços</h2><p>Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação em PDF.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -307,7 +313,7 @@ else:
             cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=TA_CENTER)
 
             story = []
-            story.append(Paragraph("<b>RELATÓRIO DE AUDITORIA E RESSARCIMENTO - SP</b>", title_style))
+            story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
             story.append(Spacer(1, 5))
             story.append(Paragraph(f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']} | <b>Cidade:</b> {loja['cidade']}", sub_style))
             story.append(Spacer(1, 15))
