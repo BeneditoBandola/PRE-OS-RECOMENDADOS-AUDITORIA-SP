@@ -11,7 +11,7 @@ st.set_page_config(
     page_icon="📊",
 )
 
-# --- 2. DICIONÁRIO DE LOJAS REAIS (FILIAL RIO PRETO) ---
+# --- 2. DICIONÁRIO DE LOJAS REAIS (FILIAIS DE SP) ---
 LOJAS_POR_FILIAL = {
     "SÃO JOSÉ DO RIO PRETO": [
         {"codigo": 9612, "nome": "ANDERSON TOCHETIN RACOES - ME", "cnpj": "13.994.857/0001-16", "cidade": "ARIRANHA", "bairro": "CHACARA SETE ELOS"},
@@ -26,8 +26,17 @@ LOJAS_POR_FILIAL = {
         {"codigo": 13224, "nome": "M.N. STOK DOG PET SHOP LTDA", "cnpj": "26.591.656/0001-10", "cidade": "SAO JOSE DO RIO PRETO", "bairro": "JARDIM RESIDENCIAL VETORASSO"},
         {"codigo": 4964, "nome": "O MUNDO ANIMAL COMERCIO LTDA", "cnpj": "67.731.208/0001-51", "cidade": "SAO JOSE DO RIO PRETO", "bairro": "VL MACENO"}
     ],
-    "RIBEIRÃO PRETO": [
-        {"codigo": 9001, "nome": "EXEMPLO LOJA RIBEIRÃO PRETO", "cnpj": "00.000.000/0001-00", "cidade": "RIBEIRAO PRETO", "bairro": "CENTRO"}
+    "RIBEIRÃO PRETO (FILIAL SÃO JOÃO)": [
+        {"codigo": 14272, "nome": "AMOPETS LTDA", "cnpj": "13.062.215/0001-89", "cidade": "RIBEIRAO PRETO", "bairro": "JARDIM IRAJA"},
+        {"codigo": 13829, "nome": "CENTER SHOP DO ANIMAL LTDA", "cnpj": "30.872.481/0001-96", "cidade": "RIBEIRAO PRETO", "bairro": "BONFIM PAULISTA"},
+        {"codigo": 10421, "nome": "DELIBO PET SHOP LTDA", "cnpj": "17.974.159/0001-00", "cidade": "RIBEIRAO PRETO", "bairro": "VILA TIBERIO"},
+        {"codigo": 16261, "nome": "E.E.S. PET SHOP COM DE PRODS E ANIMAIS DE ESTIM LTDA", "cnpj": "36.667.802/0001-05", "cidade": "RIBEIRAO PRETO", "bairro": "PLANALTO VERDE"},
+        {"codigo": 24050, "nome": "JB PETSHOP RP LTDA", "cnpj": "52.806.664/0001-46", "cidade": "RIBEIRAO PRETO", "bairro": "SANTA CRUZ DO JOSE JACQUES"},
+        {"codigo": 8312, "nome": "TCM AGROPET LTDA", "cnpj": "69.061.695/0001-18", "cidade": "RIBEIRAO PRETO", "bairro": "VILA VIRGINIA"},
+        {"codigo": 8785, "nome": "BIVETER COMERCIO DE PRODUTOS AGROPECUARIOS LTDA", "cnpj": "07.831.582/0001-05", "cidade": "SAO CARLOS", "bairro": "JD. RICETTI"},
+        {"codigo": 24457, "nome": "CASA PET C LTDA", "cnpj": "56.961.304/0001-70", "cidade": "SAO CARLOS", "bairro": "CENTRO"},
+        {"codigo": 628, "nome": "COMAV COMERCIAL AGRO PECUARIA LTDA", "cnpj": "59.723.817/0001-30", "cidade": "SAO CARLOS", "bairro": "CENTRO"},
+        {"codigo": 23333, "nome": "PULL PET LTDA", "cnpj": "49.703.428/0001-90", "cidade": "SAO CARLOS", "bairro": "CENTRO"}
     ]
 }
 
@@ -88,7 +97,7 @@ if df_produtos is None:
 
 # --- 5. SELEÇÃO DE FILIAL E LOJA (BARRA LATERAL) ---
 st.sidebar.header("📍 Configuração da Auditoria")
-filial_selecionada = st.sidebar.selectbox("Selecione a Filial:", ["SÃO JOSÉ DO RIO PRETO", "RIBEIRÃO PRETO"])
+filial_selecionada = st.sidebar.selectbox("Selecione a Filial:", ["SÃO JOSÉ DO RIO PRETO", "RIBEIRÃO PRETO (FILIAL SÃO JOÃO)"])
 
 lista_lojas = LOJAS_POR_FILIAL.get(filial_selecionada, [])
 loja_nomes = [f"{l['codigo']} - {l['nome']} ({l['cidade']})" for l in lista_lojas]
@@ -118,7 +127,6 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
     if os.path.exists(caminho_json):
         try:
             df_carregado = pandas.read_json(caminho_json, orient="records")
-            # Garante conversão de colunas chave para string para evitar erros de leitura
             for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO']:
                 if c in df_carregado.columns:
                     df_carregado[c] = df_carregado[c].astype(str).str.replace(".0", "", regex=False).str.strip()
@@ -128,7 +136,6 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
     if df_carregado is not None and not df_carregado.empty:
         st.session_state["auditoria_dados"][chave_sessao_loja] = df_carregado
     else:
-        # Cria a partir da base garantindo que todas as colunas essenciais existam
         colunas_necessarias = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP'] if c in df_produtos.columns]
         df_init = df_produtos[colunas_necessarias].copy()
         df_init['PREÇO PRATICADO'] = 0.0
@@ -155,7 +162,7 @@ st.markdown("---")
 # --- MODO 1: CADASTRO COM BUSCA RÁPIDA POR EAN / CÓDIGO ---
 if modo_operacao.startswith("1"):
     st.markdown(f"#### 📝 Cadastro Rápido - {loja_obj['nome'] if loja_obj else ''}")
-    st.markdown("💡 **Dica de Campo:** Digite os **últimos 5 números do EAN**, código ou SKU para localizar o produto instantaneamente.")
+    st.markdown("💡 **Dica de Campo:** Digite os **últimos números do EAN**, código ou SKU para localizar o produto instantaneamente.")
 
     filtro_busca = st.text_input("🔍 Pesquisa rápida (Digite parte do EAN, Código ou Nome):", placeholder="Ex: 4731, gastro, kitten...")
     
@@ -163,7 +170,6 @@ if modo_operacao.startswith("1"):
     if filtro_busca:
         termo = filtro_busca.strip().lower()
         
-        # Cria condições de busca segura verificando se as colunas existem
         condicoes = []
         if 'COD. EAN_LIMPO' in df_filtrado.columns:
             condicoes.append(df_filtrado['COD. EAN_LIMPO'].str.endswith(termo) | df_filtrado['COD. EAN_LIMPO'].str.contains(termo, na=False))
@@ -180,7 +186,6 @@ if modo_operacao.startswith("1"):
                 filtro_final = filtro_final | c
             df_filtrado = df_filtrado[filtro_final]
 
-    # Monta dinamicamente as colunas de exibição apenas se existirem no DataFrame
     colunas_possiveis = ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE']
     colunas_edicao = [c for c in colunas_possiveis if c in df_filtrado.columns]
     
