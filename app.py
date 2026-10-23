@@ -153,6 +153,10 @@ if loja_obj:
 
 caminho_json = f"auditoria_loja_{loja_obj['codigo']}.json" if loja_obj else "auditoria_loja_padrao.json"
 
+# --- AVISO DE CADASTRO JÁ EXISTENTE ---
+if loja_obj and os.path.exists(caminho_json):
+    st.sidebar.warning("⚠️ **Cliente já cadastrado!** Já existe um salvamento anterior em JSON para esta loja. Você pode abrir para complementar, revisar ou corrigir os dados livremente.")
+
 if "auditoria_dados" not in st.session_state:
     st.session_state["auditoria_dados"] = {}
 
@@ -201,7 +205,7 @@ if btn_opcao_2:
 
 st.markdown("---")
 
-# Função de geração de PDF com Dados do Cliente e Google Maps
+# Função de geração de PDF (Com endereço completo da planilha e SEM coordenadas)
 def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
     pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
     doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -216,9 +220,8 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
     story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
     story.append(Spacer(1, 5))
     
-    # Informações cadastrais do cliente extraídas da planilha de coordenadas
+    # Extrair endereço completo da planilha de coordenadas sem mostrar coordenadas no PDF
     endereco_completo = f"{loja['cidade']} - {loja['bairro']}"
-    lat_lon_str = "Não disponível"
     maps_url = ""
     
     if dados_coord is not None and not dados_coord.empty:
@@ -233,10 +236,9 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
         lat = str(row_c.get('LATITUDE', '')).replace(',', '.')
         lon = str(row_c.get('LONGITUDE', '')).replace(',', '.')
         if lat and lon and lat != 'nan':
-            lat_lon_str = f"Lat: {lat} | Lon: {lon}"
             maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
 
-    info_loja_txt = f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']}<br/><b>Endereço:</b> {endereco_completo}<br/><b>Coordenadas:</b> {lat_lon_str}"
+    info_loja_txt = f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']}<br/><b>Endereço:</b> {endereco_completo}"
     story.append(Paragraph(info_loja_txt, sub_style))
     
     if maps_url:
@@ -290,9 +292,9 @@ if st.session_state["modo_ativo"] == "cadastro":
     if match_c is not None and not match_c.empty:
         rc = match_c.iloc[0]
         end_t = f"{rc.get('ENDEREÇO', '')}, {rc.get('BAIRRO', '')} - {rc.get('CIDADE', '')}/{rc.get('UF', '')}"
+        st.info(f"📍 **Endereço cadastrado na planilha:** {end_t}")
         lat_t = str(rc.get('LATITUDE', '')).replace(',', '.')
         lon_t = str(rc.get('LONGITUDE', '')).replace(',', '.')
-        st.info(f"📍 **Endereço na planilha:** {end_t} | Coordenadas: ({lat_t}, {lon_t})")
         if lat_t and lon_t and lat_t != 'nan':
             url_m = f"https://www.google.com/maps/search/?api=1&query={lat_t},{lon_t}"
             st.markdown(f"🌍 **[Abrir rota exata no Google Maps]({url_m})**", unsafe_allow_html=True)
@@ -364,7 +366,7 @@ if st.session_state["modo_ativo"] == "cadastro":
             arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral, match_c)
             with open(arquivo_pdf, "rb") as pdf_file:
                 st.download_button(
-                    label="⬇️ BAIXAR PDF DO RESSARCIMENTO COM MAPAS AGORA",
+                    label="⬇️ BAIXAR PDF DO RESSARCIMENTO ATUALIZADO",
                     data=pdf_file,
                     file_name=arquivo_pdf,
                     mime="application/pdf",
