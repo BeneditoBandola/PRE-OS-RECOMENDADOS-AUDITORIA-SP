@@ -94,27 +94,34 @@ def carregar_dados():
         else:
             df[f"{col}_LIMPO"] = ""
             
-    # Garantir que colunas essenciais existam
-    if 'VALOR_RECOMENDADO_SP' not in df.columns:
-        for c in df.columns:
-            if 'VALOR' in c or 'PRECO' in c:
-                df['VALOR_RECOMENDADO_SP'] = df[c]
-                break
+    # Identificar qual coluna é o preço recomendado SP
+    col_valor = None
+    for c in df.columns:
+        if 'VALOR' in c or 'PRECO' in c or 'RECOMENDADO' in c:
+            col_valor = c
+            break
+            
+    if col_valor and col_valor != 'VALOR_RECOMENDADO_SP':
+        df['VALOR_RECOMENDADO_SP'] = pandas.to_numeric(df[col_valor], errors='coerce').fillna(0.0)
+    elif 'VALOR_RECOMENDADO_SP' not in df.columns:
+        df['VALOR_RECOMENDADO_SP'] = 0.0
 
-    # Inclusão manual garantida do Dachshund Adulto 1 Kg (caso não esteja na planilha)
-    novo_prod = {
-        'CODIGO_LIMPO': '97983',
-        'COD. EAN_LIMPO': '7896181211990',
-        'SKU_LIMPO': '97983',
-        'NOME COMERCIAL': 'DACHSHUND ADULTO 1 KG',
-        'FAMILIA': 'CANINE CARE NUTRITION',
-        'VALOR_RECOMENDADO_SP': 62.90
-    }
-    
-    # Se o código 97983 já não estiver no df, adicionamos
-    if 'CODIGO_LIMPO' in df.columns and not (df['CODIGO_LIMPO'] == '97983').any():
-        df_novo = pandas.DataFrame([novo_prod])
-        df = pandas.concat([df, df_novo], ignore_index=True)
+    # Forçar explicitamente o preço 62.90 para o Dachshund Adulto 1 Kg (código 97983)
+    mask_dach = df['CODIGO_LIMPO'] == '97983'
+    if mask_dach.any():
+        df.loc[mask_dach, 'VALOR_RECOMENDADO_SP'] = 62.90
+        df.loc[mask_dach, 'NOME COMERCIAL'] = 'DACHSHUND ADULTO 1 KG'
+    else:
+        # Se não existir na planilha, injetamos na marra pelo código
+        novo_prod = {
+            'CODIGO_LIMPO': '97983',
+            'COD. EAN_LIMPO': '7896181211990',
+            'SKU_LIMPO': '97983',
+            'NOME COMERCIAL': 'DACHSHUND ADULTO 1 KG',
+            'FAMILIA': 'BREED',
+            'VALOR_RECOMENDADO_SP': 62.90
+        }
+        df = pandas.concat([df, pandas.DataFrame([novo_prod])], ignore_index=True)
 
     return df
 
@@ -197,14 +204,17 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
             df_carregado = None
 
     if df_carregado is not None and not df_carregado.empty:
-        # Garantir que o Dachshund novo esteja presente mesmo em JSONs antigos
-        if not (df_carregado['CODIGO_LIMPO'] == '97983').any():
+        # Atualizar preço do Dachshund se estiver zerado em JSONs antigos
+        mask_d_json = df_carregado['CODIGO_LIMPO'] == '97983'
+        if mask_d_json.any():
+            df_carregado.loc[mask_d_json, 'VALOR_RECOMENDADO_SP'] = 62.90
+        else:
             novo_df_row = pandas.DataFrame([{
                 'CODIGO_LIMPO': '97983',
                 'COD. EAN_LIMPO': '7896181211990',
                 'SKU_LIMPO': '97983',
                 'NOME COMERCIAL': 'DACHSHUND ADULTO 1 KG',
-                'FAMILIA': 'CANINE CARE NUTRITION',
+                'FAMILIA': 'BREED',
                 'VALOR_RECOMENDADO_SP': 62.90,
                 'PREÇO PRATICADO': 0.0,
                 'QUANTIDADE': 0,
