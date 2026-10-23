@@ -68,7 +68,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços</h2><p>Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação em PDF.</p></div>',
+    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços</h2><p>Busca rápida por EAN/Código, controle de preços, salvamento em JSON e Exportação automática em PDF.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -153,17 +153,16 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
 
 df_loja_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
 
-# --- 6. ESCOLHA DO MODO DE OPERAÇÃO (BOTÕES GRANDES E CLAROS) ---
+# --- 6. ESCOLHA DO MODO DE OPERAÇÃO (BOTÕES GRANDES) ---
 st.markdown("### 🛠️ Escolha a Opção Desejada")
 
 col_b1, col_b2 = st.columns(2)
 
 with col_b1:
-    btn_opcao_1 = st.button("📝 1. Cadastrar Preços, Quantidades & Gerar PDF", use_container_width=True, type="primary")
+    btn_opcao_1 = st.button("📝 1. Cadastrar Preços, Quantidades & Salvar", use_container_width=True, type="primary")
 with col_b2:
     btn_opcao_2 = st.button("🔍 2. Listar Somente Preços Diferentes (Distorção)", use_container_width=True)
 
-# Gerenciar estado da aba selecionada
 if "modo_ativo" not in st.session_state:
     st.session_state["modo_ativo"] = "cadastro"
 
@@ -174,7 +173,62 @@ if btn_opcao_2:
 
 st.markdown("---")
 
-# --- OPÇÃO 1: CADASTRAR PREÇOS, QUANTIDADES E GERAR PDF ---
+# Função de geração de PDF
+def gerar_pdf_ressarcimento(loja, df_dados, total):
+    pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor("#C0392B"), alignment=TA_CENTER)
+    sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.HexColor("#2C3E50"), alignment=TA_CENTER)
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor("#2C3E50"))
+    cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=TA_CENTER)
+
+    story = []
+    story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
+    story.append(Spacer(1, 5))
+    story.append(Paragraph(f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']} | <b>Cidade:</b> {loja['cidade']}", sub_style))
+    story.append(Spacer(1, 15))
+
+    tabela_dados = [[
+        Paragraph("<b>Cód</b>", cell_header),
+        Paragraph("<b>Produto</b>", cell_header),
+        Paragraph("<b>Rec. SP</b>", cell_header),
+        Paragraph("<b>Praticado</b>", cell_header),
+        Paragraph("<b>Qtd</b>", cell_header),
+        Paragraph("<b>Dif. Unit.</b>", cell_header),
+        Paragraph("<b>Total Apurado</b>", cell_header)
+    ]]
+
+    for _, row in df_dados.iterrows():
+        tabela_dados.append([
+            Paragraph(str(row['CODIGO_LIMPO']), cell_style),
+            Paragraph(str(row['NOME COMERCIAL']), cell_style),
+            Paragraph(f"R$ {row['VALOR_RECOMENDADO_SP']:.2f}", cell_style),
+            Paragraph(f"R$ {row['PREÇO PRATICADO']:.2f}", cell_style),
+            Paragraph(str(int(row['QUANTIDADE'])), cell_style),
+            Paragraph(f"R$ {row['DIFERENÇA_UNITARIA']:.2f}", cell_style),
+            Paragraph(f"R$ {row['VALOR_TOTAL_RESSARCIMENTO']:.2f}", cell_style)
+        ])
+
+    tabela = Table(tabela_dados, colWidths=[45, 160, 60, 60, 35, 60, 85])
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#C0392B")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#BDC3C7")),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+
+    story.append(tabela)
+    story.append(Spacer(1, 15))
+    story.append(Paragraph(f"<b>VALOR TOTAL GERAL DE RESSARCIMENTO: R$ {total:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", "."), ParagraphStyle('TotalStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor("#27AE60"), alignment=TA_CENTER)))
+
+    doc.build(story)
+    return pdf_path
+
+# --- OPÇÃO 1: CADASTRAR PREÇOS, QUANTIDADES E SALVAR (COM PDF AUTOMÁTICO) ---
 if st.session_state["modo_ativo"] == "cadastro":
     st.markdown(f"#### 📝 Cadastro de Preços e Quantidades - {loja_obj['nome'] if loja_obj else ''}")
     st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente.")
@@ -220,7 +274,7 @@ if st.session_state["modo_ativo"] == "cadastro":
         key=f"editor_{chave_sessao_loja}"
     )
 
-    if st.button("💾 Salvar Alterações & Gravar em JSON", type="primary"):
+    if st.button("💾 Salvar em JSON & Baixar PDF Oficial", type="primary"):
         for idx, row in editado_df.iterrows():
             codigo_prod = row['CODIGO_LIMPO']
             mask = st.session_state["auditoria_dados"][chave_sessao_loja]['CODIGO_LIMPO'] == codigo_prod
@@ -229,87 +283,32 @@ if st.session_state["modo_ativo"] == "cadastro":
             if row['PREÇO PRATICADO'] > 0:
                 st.session_state["auditoria_dados"][chave_sessao_loja].loc[mask, 'STATUS_AUDITORIA'] = "Auditado"
         
+        # Salva no arquivo JSON
         df_para_salvar = st.session_state["auditoria_dados"][chave_sessao_loja]
         df_para_salvar.to_json(caminho_json, orient="records", force_ascii=False, indent=4)
         
         st.success(f"✅ Dados salvos com sucesso e gravados no arquivo `{caminho_json}`!")
 
-    # Seção de cálculo e PDF logo abaixo no cadastro
-    df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
-    df_ressarcimento = df_atual[(df_atual['PREÇO PRATICADO'] > 0) & (df_atual['QUANTIDADE'] > 0)].copy()
+        # Prepara e disponibiliza o PDF para download direto na tela
+        df_atual = st.session_state["auditoria_dados"][chave_sessao_loja]
+        df_ressarcimento = df_atual[(df_atual['PREÇO PRATICADO'] > 0) & (df_atual['QUANTIDADE'] > 0)].copy()
 
-    if not df_ressarcimento.empty:
-        df_ressarcimento['DIFERENÇA_UNITARIA'] = df_ressarcimento['PREÇO PRATICADO'] - df_ressarcimento['VALOR_RECOMENDADO_SP']
-        df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'] = df_ressarcimento['DIFERENÇA_UNITARIA'] * df_ressarcimento['QUANTIDADE']
-        total_geral = df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'].sum()
+        if not df_ressarcimento.empty:
+            df_ressarcimento['DIFERENÇA_UNITARIA'] = df_ressarcimento['PREÇO PRATICADO'] - df_ressarcimento['VALOR_RECOMENDADO_SP']
+            df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'] = df_ressarcimento['DIFERENÇA_UNITARIA'] * df_ressarcimento['QUANTIDADE']
+            total_geral = df_ressarcimento['VALOR_TOTAL_RESSARCIMENTO'].sum()
 
-        st.markdown("---")
-        st.markdown("### 💰 Apuração e Geração de PDF")
-        st.metric("Valor Total Geral de Ressarcimento", f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-
-        def gerar_pdf_ressarcimento(loja, df_dados, total):
-            pdf_path = f"Relatorio_Ressarcimento_{loja['codigo']}.pdf"
-            doc = SimpleDocTemplate(pdf_path, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-            styles = getSampleStyleSheet()
-            
-            title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, textColor=colors.HexColor("#C0392B"), alignment=TA_CENTER)
-            sub_style = ParagraphStyle('SubStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.HexColor("#2C3E50"), alignment=TA_CENTER)
-            cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, textColor=colors.HexColor("#2C3E50"))
-            cell_header = ParagraphStyle('CellHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white, alignment=TA_CENTER)
-
-            story = []
-            story.append(Paragraph("<b>RELATÓRIO DE AJUSTE DE PREÇOS E RESSARCIMENTO</b>", title_style))
-            story.append(Spacer(1, 5))
-            story.append(Paragraph(f"<b>Loja:</b> {loja['nome']} | <b>CNPJ:</b> {loja['cnpj']} | <b>Cidade:</b> {loja['cidade']}", sub_style))
-            story.append(Spacer(1, 15))
-
-            tabela_dados = [[
-                Paragraph("<b>Cód</b>", cell_header),
-                Paragraph("<b>Produto</b>", cell_header),
-                Paragraph("<b>Rec. SP</b>", cell_header),
-                Paragraph("<b>Praticado</b>", cell_header),
-                Paragraph("<b>Qtd</b>", cell_header),
-                Paragraph("<b>Dif. Unit.</b>", cell_header),
-                Paragraph("<b>Total Apurado</b>", cell_header)
-            ]]
-
-            for _, row in df_dados.iterrows():
-                tabela_dados.append([
-                    Paragraph(str(row['CODIGO_LIMPO']), cell_style),
-                    Paragraph(str(row['NOME COMERCIAL']), cell_style),
-                    Paragraph(f"R$ {row['VALOR_RECOMENDADO_SP']:.2f}", cell_style),
-                    Paragraph(f"R$ {row['PREÇO PRATICADO']:.2f}", cell_style),
-                    Paragraph(str(int(row['QUANTIDADE'])), cell_style),
-                    Paragraph(f"R$ {row['DIFERENÇA_UNITARIA']:.2f}", cell_style),
-                    Paragraph(f"R$ {row['VALOR_TOTAL_RESSARCIMENTO']:.2f}", cell_style)
-                ])
-
-            tabela = Table(tabela_dados, colWidths=[45, 160, 60, 60, 35, 60, 85])
-            tabela.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#C0392B")),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#BDC3C7")),
-                ('TOPPADDING', (0, 0), (-1, -1), 5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ]))
-
-            story.append(tabela)
-            story.append(Spacer(1, 15))
-            story.append(Paragraph(f"<b>VALOR TOTAL GERAL DE RESSARCIMENTO: R$ {total:,.2f}</b>".replace(",", "X").replace(".", ",").replace("X", "."), ParagraphStyle('TotalStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor("#27AE60"), alignment=TA_CENTER)))
-
-            doc.build(story)
-            return pdf_path
-
-        if st.button("📥 Gerar Arquivo PDF Oficial"):
-            arquivo_pdf = gerador_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral)
+            arquivo_pdf = gerar_pdf_ressarcimento(loja_obj, df_ressarcimento, total_geral)
             with open(arquivo_pdf, "rb") as pdf_file:
                 st.download_button(
-                    label="⬇️ Clique aqui para baixar o PDF gerado",
+                    label="⬇️ BAIXAR PDF DO RESSARCIMENTO AGORA",
                     data=pdf_file,
                     file_name=arquivo_pdf,
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    type="primary"
                 )
+        else:
+            st.info("ℹ️ Nenhum item possui preço e quantidade maiores que zero para compor o PDF de ressarcimento.")
 
 # --- OPÇÃO 2: LISTAR SOMENTE PREÇOS DIFERENTES (DISTORÇÃO) ---
 else:
@@ -321,7 +320,6 @@ else:
         st.warning("⚠️ Nenhum produto foi cadastrado com preço praticado ainda.")
     else:
         df_auditado['DIFERENÇA_UNITARIA'] = df_auditado['PREÇO PRATICADO'] - df_auditado['VALOR_RECOMENDADO_SP']
-        # Filtra apenas os que possuem diferença (preços diferentes)
         df_diferentes = df_auditado[df_auditado['DIFERENÇA_UNITARIA'] != 0].copy()
 
         if df_diferentes.empty:
