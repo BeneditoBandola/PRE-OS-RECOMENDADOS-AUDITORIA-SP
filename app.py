@@ -46,7 +46,7 @@ LOJAS_POR_FILIAL = {
     ]
 }
 
-# --- 3. ESTILO VISUAL E TEMA (CORRIGIDO PARA EVITAR TEXTO BRANCO SOBRE BRANCO) ---
+# --- 3. ESTILO VISUAL E TEMA (CORRIGIDO PARA FORÇAR TEXTO ESCURO NO RÁDIO) ---
 st.markdown(
     """
 <style>
@@ -65,6 +65,13 @@ st.markdown(
 }
 .cabecalho-principal p {
     color: #475569 !important;
+}
+/* Força cor escura em todos os textos de opções de rádio para evitar sumir */
+div[data-baseweb="radio"] div {
+    color: #1E293B !important;
+}
+label[data-baseweb="radio"] span {
+    color: #1E293B !important;
 }
 </style>
 """,
