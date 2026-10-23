@@ -68,7 +68,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços & Coordenadas</h2><p>Busca rápida, controle de preços, salvamento em JSON, PDF completo e integração com Google Maps.</p></div>',
+    '<div class="cabecalho-principal"><h2>📊 Ajuste de Preços & Coordenadas</h2><p>Otimizado para uso em celular: busca rápida, digitação ágil e PDF oficial.</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -94,7 +94,6 @@ def carregar_dados():
         else:
             df[f"{col}_LIMPO"] = ""
             
-    # Identificar qual coluna é o preço recomendado SP
     col_valor = None
     for c in df.columns:
         if 'VALOR' in c or 'PRECO' in c or 'RECOMENDADO' in c:
@@ -106,19 +105,16 @@ def carregar_dados():
     elif 'VALOR_RECOMENDADO_SP' not in df.columns:
         df['VALOR_RECOMENDADO_SP'] = 0.0
 
-    # Forçar explicitamente o preço 62.90 para o Dachshund Adulto 1 Kg (código 97983)
     mask_dach = df['CODIGO_LIMPO'] == '97983'
     if mask_dach.any():
         df.loc[mask_dach, 'VALOR_RECOMENDADO_SP'] = 62.90
         df.loc[mask_dach, 'NOME COMERCIAL'] = 'DACHSHUND ADULTO 1 KG'
     else:
-        # Se não existir na planilha, injetamos na marra pelo código
         novo_prod = {
             'CODIGO_LIMPO': '97983',
             'COD. EAN_LIMPO': '7896181211990',
             'SKU_LIMPO': '97983',
             'NOME COMERCIAL': 'DACHSHUND ADULTO 1 KG',
-            'FAMILIA': 'BREED',
             'VALOR_RECOMENDADO_SP': 62.90
         }
         df = pandas.concat([df, pandas.DataFrame([novo_prod])], ignore_index=True)
@@ -183,7 +179,6 @@ if loja_obj:
 
 caminho_json = f"auditoria_loja_{loja_obj['codigo']}.json" if loja_obj else "auditoria_loja_padrao.json"
 
-# --- AVISO DE CADASTRO JÁ EXISTENTE ---
 if loja_obj and os.path.exists(caminho_json):
     st.sidebar.warning("⚠️ **Cliente já cadastrado!** Já existe um salvamento anterior em JSON para esta loja. Você pode abrir para complementar, revisar ou corrigir os dados livremente.")
 
@@ -204,7 +199,6 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
             df_carregado = None
 
     if df_carregado is not None and not df_carregado.empty:
-        # Atualizar preço do Dachshund se estiver zerado em JSONs antigos
         mask_d_json = df_carregado['CODIGO_LIMPO'] == '97983'
         if mask_d_json.any():
             df_carregado.loc[mask_d_json, 'VALOR_RECOMENDADO_SP'] = 62.90
@@ -214,7 +208,6 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
                 'COD. EAN_LIMPO': '7896181211990',
                 'SKU_LIMPO': '97983',
                 'NOME COMERCIAL': 'DACHSHUND ADULTO 1 KG',
-                'FAMILIA': 'BREED',
                 'VALOR_RECOMENDADO_SP': 62.90,
                 'PREÇO PRATICADO': 0.0,
                 'QUANTIDADE': 0,
@@ -223,7 +216,7 @@ if chave_sessao_loja not in st.session_state["auditoria_dados"]:
             df_carregado = pandas.concat([df_carregado, novo_df_row], ignore_index=True)
         st.session_state["auditoria_dados"][chave_sessao_loja] = df_carregado
     else:
-        colunas_necessarias = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP'] if c in df_produtos.columns]
+        colunas_necessarias = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO', 'NOME COMERCIAL', 'VALOR_RECOMENDADO_SP'] if c in df_produtos.columns]
         df_init = df_produtos[colunas_necessarias].copy()
         df_init['PREÇO PRATICADO'] = 0.0
         df_init['QUANTIDADE'] = 0
@@ -296,8 +289,8 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
     tabela_dados = [[
         Paragraph("<b>Cód</b>", cell_header),
         Paragraph("<b>Produto</b>", cell_header),
-        Paragraph("<b>Rec. SP</b>", cell_header),
         Paragraph("<b>Praticado</b>", cell_header),
+        Paragraph("<b>Rec. SP</b>", cell_header),
         Paragraph("<b>Qtd</b>", cell_header),
         Paragraph("<b>Dif. Unit.</b>", cell_header),
         Paragraph("<b>Total Apurado</b>", cell_header)
@@ -307,8 +300,8 @@ def gerar_pdf_ressarcimento(loja, df_dados, total, dados_coord):
         tabela_dados.append([
             Paragraph(str(row['CODIGO_LIMPO']), cell_style),
             Paragraph(str(row['NOME COMERCIAL']), cell_style),
-            Paragraph(f"R$ {row['VALOR_RECOMENDADO_SP']:.2f}", cell_style),
             Paragraph(f"R$ {row['PREÇO PRATICADO']:.2f}", cell_style),
+            Paragraph(f"R$ {row['VALOR_RECOMENDADO_SP']:.2f}", cell_style),
             Paragraph(str(int(row['QUANTIDADE'])), cell_style),
             Paragraph(f"R$ {row['DIFERENÇA_UNITARIA']:.2f}", cell_style),
             Paragraph(f"R$ {row['VALOR_TOTAL_RESSARCIMENTO']:.2f}", cell_style)
@@ -345,7 +338,7 @@ if st.session_state["modo_ativo"] == "cadastro":
             url_m = f"https://www.google.com/maps/search/?api=1&query={lat_t},{lon_t}"
             st.markdown(f"🌍 **[Abrir rota exata no Google Maps]({url_m})**", unsafe_allow_html=True)
 
-    st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente (Ex: digite *97983*, *11990* ou *dachshund*).")
+    st.markdown("💡 **Dica:** Digite os **últimos números do EAN**, código ou nome para localizar o produto instantaneamente.")
 
     filtro_busca = st.text_input("🔍 Pesquisa rápida (EAN, Código ou Nome):", placeholder="Ex: 97983, 11990, dachshund...")
     
@@ -368,19 +361,26 @@ if st.session_state["modo_ativo"] == "cadastro":
                 filtro_final = filtro_final | c
             df_filtrado = df_filtrado[filtro_final]
 
-    colunas_possiveis = ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE']
+    # ORDEM EXATA SOLICITADA: Produto, Preço Praticado, Quantidade, depois as outras
+    colunas_possiveis = [
+        'NOME COMERCIAL', 
+        'PREÇO PRATICADO', 
+        'QUANTIDADE', 
+        'VALOR_RECOMENDADO_SP', 
+        'CODIGO_LIMPO', 
+        'COD. EAN_LIMPO'
+    ]
     colunas_edicao = [c for c in colunas_possiveis if c in df_filtrado.columns]
     
     editado_df = st.data_editor(
         df_filtrado[colunas_edicao],
         column_config={
+            "NOME COMERCIAL": st.column_config.TextColumn("Produto", disabled=True),
+            "PREÇO PRATICADO": st.column_config.NumberColumn("Preço Praticado (R$)", format="R$ %.2f", min_value=0.0, step=0.1),
+            "QUANTIDADE": st.column_config.NumberColumn("Qtd (Estoque/Venda)", min_value=0, step=1),
+            "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Preço Rec. (SP)", format="R$ %.2f", disabled=True),
             "CODIGO_LIMPO": st.column_config.TextColumn("Código", disabled=True),
             "COD. EAN_LIMPO": st.column_config.TextColumn("Cód. EAN", disabled=True),
-            "NOME COMERCIAL": st.column_config.TextColumn("Produto", disabled=True),
-            "FAMILIA": st.column_config.TextColumn("Família", disabled=True),
-            "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Preço Rec. (SP)", format="R$ %.2f", disabled=True),
-            "PREÇO PRATICADO": st.column_config.NumberColumn("Preço Praticado (R$)", format="R$ %.2f", min_value=0.0, step=0.1),
-            "QUANTIDADE": st.column_config.NumberColumn("Qtd (Estoque/Venda)", min_value=0, step=1)
         },
         hide_index=True,
         use_container_width=True,
@@ -441,18 +441,18 @@ else:
             st.metric("SKUs com Preços Diferentes", len(df_diferentes))
             st.markdown("---")
             
-            colunas_rel = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO'] if c in df_diferentes.columns]
+            colunas_rel = [c for c in ['NOME COMERCIAL', 'PREÇO PRATICADO', 'QUANTIDADE', 'VALOR_RECOMENDADO_SP', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO', 'CODIGO_LIMPO', 'COD. EAN_LIMPO'] if c in df_diferentes.columns]
             st.dataframe(
                 df_diferentes[colunas_rel],
                 column_config={
-                    "CODIGO_LIMPO": "Código",
-                    "COD. EAN_LIMPO": "EAN",
                     "NOME COMERCIAL": "Produto",
-                    "FAMILIA": "Família",
-                    "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Preço Rec. (SP)", format="R$ %.2f"),
                     "PREÇO PRATICADO": st.column_config.NumberColumn("Praticado", format="R$ %.2f"),
+                    "QUANTIDADE": "Qtd",
+                    "VALOR_RECOMENDADO_SP": st.column_config.NumberColumn("Preço Rec. (SP)", format="R$ %.2f"),
                     "DIFERENÇA_UNITARIA": st.column_config.NumberColumn("Diferença Unit.", format="R$ %.2f"),
-                    "TIPO_DISTORCAO": "Status Distorção"
+                    "TIPO_DISTORCAO": "Status Distorção",
+                    "CODIGO_LIMPO": "Código",
+                    "COD. EAN_LIMPO": "EAN"
                 },
                 hide_index=True,
                 use_container_width=True
