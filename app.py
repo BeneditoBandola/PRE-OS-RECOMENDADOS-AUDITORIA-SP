@@ -1,5 +1,5 @@
 import os
-import json
+json = __import__('json')
 unicodedata = __import__('unicodedata')
 pandas = __import__('pandas')
 streamlit = st = __import__('streamlit')
@@ -27,7 +27,6 @@ LOJAS_POR_FILIAL = {
         {"codigo": 4964, "nome": "O MUNDO ANIMAL COMERCIO LTDA", "cnpj": "67.731.208/0001-51", "cidade": "SAO JOSE DO RIO PRETO", "bairro": "VL MACENO"}
     ],
     "RIBEIRÃO PRETO": [
-        # Adicione as lojas reais de Ribeirão Preto aqui quando necessário
         {"codigo": 9001, "nome": "EXEMPLO LOJA RIBEIRÃO PRETO", "cnpj": "00.000.000/0001-00", "cidade": "RIBEIRAO PRETO", "bairro": "CENTRO"}
     ]
 }
@@ -107,27 +106,31 @@ if loja_obj:
     st.sidebar.markdown(f"**CNPJ:** {loja_obj['cnpj']}")
     st.sidebar.markdown(f"**Cidade/Bairro:** {loja_obj['cidade']} / {loja_obj['bairro']}")
 
-# Caminho do arquivo JSON para persistência por loja
 caminho_json = f"auditoria_loja_{loja_obj['codigo']}.json" if loja_obj else "auditoria_loja_padrao.json"
 
-# Carregar dados salvos em JSON se existirem
 if "auditoria_dados" not in st.session_state:
     st.session_state["auditoria_dados"] = {}
 
 chave_sessao_loja = f"loja_{loja_obj['codigo']}" if loja_obj else "loja_padrao"
 
 if chave_sessao_loja not in st.session_state["auditoria_dados"]:
+    df_carregado = None
     if os.path.exists(caminho_json):
         try:
             df_carregado = pandas.read_json(caminho_json, orient="records")
-            st.session_state["auditoria_dados"][chave_sessao_loja] = df_carregado
+            # Garante conversão de colunas chave para string para evitar erros de leitura
+            for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO']:
+                if c in df_carregado.columns:
+                    df_carregado[c] = df_carregado[c].astype(str).str.replace(".0", "", regex=False).str.strip()
         except Exception:
-            st.session_state["auditoria_dados"][chave_sessao_loja] = None
-    else:
-        st.session_state["auditoria_dados"][chave_sessao_loja] = None
+            df_carregado = None
 
-    if st.session_state["auditoria_dados"][chave_sessao_loja] is None:
-        df_init = df_produtos[['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP']].copy()
+    if df_carregado is not None and not df_carregado.empty:
+        st.session_state["auditoria_dados"][chave_sessao_loja] = df_carregado
+    else:
+        # Cria a partir da base garantindo que todas as colunas essenciais existam
+        colunas_necessarias = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'SKU_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP'] if c in df_produtos.columns]
+        df_init = df_produtos[colunas_necessarias].copy()
         df_init['PREÇO PRATICADO'] = 0.0
         df_init['QUANTIDADE'] = 0
         df_init['STATUS_AUDITORIA'] = "Pendente"
@@ -159,16 +162,27 @@ if modo_operacao.startswith("1"):
     df_filtrado = df_loja_atual.copy()
     if filtro_busca:
         termo = filtro_busca.strip().lower()
-        df_filtrado = df_filtrado[
-            df_filtrado['COD. EAN_LIMPO'].str.endswith(termo) |
-            df_filtrado['CODIGO_LIMPO'].str.endswith(termo) |
-            df_filtrado['SKU_LIMPO'].str.endswith(termo) |
-            df_filtrado['COD. EAN_LIMPO'].str.contains(termo) |
-            df_filtrado['CODIGO_LIMPO'].str.contains(termo) |
-            df_filtrado['NOME COMERCIAL'].str.lower().str.contains(termo)
-        ]
+        
+        # Cria condições de busca segura verificando se as colunas existem
+        condicoes = []
+        if 'COD. EAN_LIMPO' in df_filtrado.columns:
+            condicoes.append(df_filtrado['COD. EAN_LIMPO'].str.endswith(termo) | df_filtrado['COD. EAN_LIMPO'].str.contains(termo, na=False))
+        if 'CODIGO_LIMPO' in df_filtrado.columns:
+            condicoes.append(df_filtrado['CODIGO_LIMPO'].str.endswith(termo) | df_filtrado['CODIGO_LIMPO'].str.contains(termo, na=False))
+        if 'SKU_LIMPO' in df_filtrado.columns:
+            condicoes.append(df_filtrado['SKU_LIMPO'].str.endswith(termo) | df_filtrado['SKU_LIMPO'].str.contains(termo, na=False))
+        if 'NOME COMERCIAL' in df_filtrado.columns:
+            condicoes.append(df_filtrado['NOME COMERCIAL'].str.lower().str.contains(termo, na=False))
 
-    colunas_edicao = ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE']
+        if condicoes:
+            filtro_final = condicoes[0]
+            for c in condicoes[1:]:
+                filtro_final = filtro_final | c
+            df_filtrado = df_filtrado[filtro_final]
+
+    # Monta dinamicamente as colunas de exibição apenas se existirem no DataFrame
+    colunas_possiveis = ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE']
+    colunas_edicao = [c for c in colunas_possiveis if c in df_filtrado.columns]
     
     editado_df = st.data_editor(
         df_filtrado[colunas_edicao],
@@ -195,7 +209,6 @@ if modo_operacao.startswith("1"):
             if row['PREÇO PRATICADO'] > 0:
                 st.session_state["auditoria_dados"][chave_sessao_loja].loc[mask, 'STATUS_AUDITORIA'] = "Auditado"
         
-        # Salvar automaticamente no arquivo JSON da loja
         df_para_salvar = st.session_state["auditoria_dados"][chave_sessao_loja]
         df_para_salvar.to_json(caminho_json, orient="records", force_ascii=False, indent=4)
         
@@ -218,8 +231,9 @@ elif modo_operacao.startswith("2"):
         m2.metric("SKUs com Diferença", len(df_auditado[df_auditado['DIFERENÇA_UNITARIA'] != 0]))
 
         st.markdown("---")
+        colunas_rel = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO'] if c in df_auditado.columns]
         st.dataframe(
-            df_auditado[['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'FAMILIA', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'DIFERENÇA_UNITARIA', 'TIPO_DISTORCAO']],
+            df_auditado[colunas_rel],
             column_config={
                 "CODIGO_LIMPO": "Código",
                 "COD. EAN_LIMPO": "EAN",
@@ -250,8 +264,9 @@ else:
         st.metric("💵 Valor Total Geral de Ressarcimento", f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         
         st.markdown("---")
+        colunas_res = [c for c in ['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE', 'DIFERENÇA_UNITARIA', 'VALOR_TOTAL_RESSARCIMENTO'] if c in df_ressarcimento.columns]
         st.dataframe(
-            df_ressarcimento[['CODIGO_LIMPO', 'COD. EAN_LIMPO', 'NOME COMERCIAL', 'VALOR_RECOMENDADO_SP', 'PREÇO PRATICADO', 'QUANTIDADE', 'DIFERENÇA_UNITARIA', 'VALOR_TOTAL_RESSARCIMENTO']],
+            df_ressarcimento[colunas_res],
             column_config={
                 "CODIGO_LIMPO": "Código",
                 "COD. EAN_LIMPO": "EAN",
